@@ -25,6 +25,7 @@ const P_RESULT := 7
 const P_SHOP := 8
 const P_DEX := 9
 const P_MAP := 10
+const P_SAIL := 11
 
 const Catalog = preload("res://scripts/catalog.gd")
 
@@ -32,6 +33,12 @@ const Catalog = preload("res://scripts/catalog.gd")
 func paint(n: Node2D) -> void:
 	var id := str(n.save.get("location", "cove"))
 	var pal := _pal(id)
+	var phase := int(n.phase)
+	if phase == P_SAIL or phase == P_FLYING or phase == P_WAITING or phase == P_BITE or phase == P_FIGHT or phase == P_RESULT:
+		_lake(n, pal, id)
+		_vignette(n)
+		_ui(n, pal, id)
+		return
 	_sky(n, pal, id)
 	_hills(n, pal, id)
 	_trees(n, pal, id)
@@ -667,6 +674,285 @@ func _pt(c: Vector2, length: float, dir: float, local: Vector2, wag: float) -> V
 	return c + Vector2(local.x * length * dir, y * length)
 
 
+func _lake(n: Node2D, pal: Dictionary, id: String) -> void:
+	_lake_sky(n, pal, id)
+	_lake_water(n, pal, id)
+	_lake_banks(n, pal, id)
+	_lake_marks(n, id)
+	_lake_life(n, id)
+	_lake_hotspot(n)
+	_lake_boat(n)
+	_lake_cast(n)
+
+
+func _lake_sky(n: Node2D, pal: Dictionary, id: String) -> void:
+	var top: Color = pal["sky0"]
+	var low: Color = pal["sky2"]
+	for i in 12:
+		var u := float(i) / 11.0
+		n.draw_rect(Rect2(0, u * 158.0, W, 18), top.lerp(low, u), true)
+	if id == "pier":
+		_moon(n, Vector2(308, 52))
+		for i in 18:
+			var sx := _hash(i * 11 + 4) * W
+			var sy := _hash(i * 7 + 2) * 90.0
+			n.draw_circle(Vector2(sx, sy), 1.1, Color(1, 1, 1, 0.45 + 0.4 * absf(sin(n.t + float(i)))))
+	else:
+		var sun := Vector2(308, 48)
+		n.draw_circle(sun, 40, Color(1, 0.86, 0.55, 0.16))
+		n.draw_circle(sun, 16, Color("fff1cf"))
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(-10, 158), Vector2(-10, 108), Vector2(48, 86), Vector2(110, 128),
+		Vector2(176, 78), Vector2(246, 122), Vector2(318, 84), Vector2(W + 10, 116), Vector2(W + 10, 158),
+	]), pal["hill_far"])
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(-10, 162), Vector2(24, 136), Vector2(86, 154), Vector2(150, 132),
+		Vector2(214, 156), Vector2(292, 138), Vector2(W + 10, 152), Vector2(W + 10, 162),
+	]), pal["hill"])
+	var leaf: Color = Color(pal["hill"]).lightened(0.14)
+	if id == "sea":
+		_palm(n, Vector2(34, 156), 62, leaf)
+		_palm(n, Vector2(352, 154), 50, leaf.darkened(0.08))
+	elif id == "river":
+		_pine(n, 28, 156, 58, leaf)
+		_pine(n, 348, 156, 64, leaf.darkened(0.08))
+	elif id == "pier":
+		for i in 2:
+			var x := 46.0 + float(i) * 280.0
+			n.draw_line(Vector2(x, 150), Vector2(x, 118), Color("2a241c"), 2.0, true)
+			n.draw_circle(Vector2(x, 114), 4, Color("ffb15a"))
+			n.draw_circle(Vector2(x, 114), 12, Color(1, 0.7, 0.3, 0.16 + 0.08 * sin(n.t * 3.0 + float(i))))
+	else:
+		_willow(n, 36, 156, 64, leaf)
+		_willow(n, 348, 156, 58, leaf.darkened(0.08))
+
+
+func _lake_water(n: Node2D, pal: Dictionary, _id: String) -> void:
+	var shallow: Color = pal["water0"]
+	var midc: Color = pal["water1"]
+	var deep: Color = pal["deep"]
+	var top_y := 150.0
+	var bands := 34
+	var span := H - top_y
+	for i in bands:
+		var u := float(i) / float(bands - 1)
+		var y := top_y + u * span
+		var h := span / float(bands) + 3.0
+		var wave := sin(n.t * 0.9 + float(i) * 0.5) * 1.6
+		var col: Color = deep.lerp(midc, smoothstep(0.05, 0.62, u)).lerp(shallow, smoothstep(0.42, 1.0, u))
+		n.draw_rect(Rect2(-8, y + wave, W + 16, h), col, true)
+	_ellipse(n, Vector2(186, 246), 120, 62, Color(deep, 0.28))
+	_ellipse(n, Vector2(190, 575), 150, 46, Color(shallow.lightened(0.12), 0.42))
+	for i in 16:
+		var y := 176.0 + float(i) * 26.0 + sin(n.t * 1.4 + float(i)) * 2.0
+		var x := 86.0 + _hash(i + 30) * 40.0
+		var a := 0.05 + 0.07 * absf(sin(n.t * 2.1 + float(i) * 0.8))
+		n.draw_line(Vector2(x, y), Vector2(x + 28.0 + float(i % 4) * 10.0, y + 1.0), Color(1, 1, 1, a), 1.3, true)
+
+
+func _lake_banks(n: Node2D, pal: Dictionary, id: String) -> void:
+	var land: Color = pal["hill"]
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(0, 148), Vector2(68, 162), Vector2(44, 280), Vector2(76, 410),
+		Vector2(42, 540), Vector2(86, 640), Vector2(0, 660),
+	]), land)
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(W, 148), Vector2(322, 160), Vector2(348, 270), Vector2(314, 400),
+		Vector2(350, 530), Vector2(318, 650), Vector2(W, 660),
+	]), land.darkened(0.06))
+	var sand := Color("d7c4a2")
+	if id == "pier":
+		sand = Color("2c333c")
+	elif id == "sea":
+		sand = Color("f3ead8")
+	elif id == "river":
+		sand = Color("3d6a48")
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(28, 668), Vector2(70, 598), Vector2(140, 572), Vector2(210, 564),
+		Vector2(286, 578), Vector2(340, 612), Vector2(362, 668),
+	]), sand)
+	n.draw_colored_polygon(PackedVector2Array([
+		Vector2(48, 668), Vector2(92, 628), Vector2(168, 608), Vector2(250, 614),
+		Vector2(320, 640), Vector2(340, 668),
+	]), sand.darkened(0.08))
+	var deck := Color("6b4b32")
+	var post := Color("3e2a1c")
+	n.draw_rect(Rect2(164, 568, 52, 100), deck, true)
+	n.draw_rect(Rect2(164, 568, 52, 4), Color("8a6244"), true)
+	for i in 4:
+		n.draw_line(Vector2(172 + i * 12, 572), Vector2(172 + i * 12, 660), Color(0, 0, 0, 0.18), 1.0, true)
+	n.draw_rect(Rect2(170, 640, 6, 22), post, true)
+	n.draw_rect(Rect2(204, 640, 6, 22), post, true)
+	var reed := Color("7ea37a")
+	if id == "pier":
+		reed = Color("3e5348")
+	for i in 8:
+		_reed(n, 78.0 + float(i) * 10.0, 600.0 - float(i % 3) * 6.0, 22.0 + float(i % 4) * 6.0, reed)
+		_reed(n, 250.0 + float(i) * 9.0, 608.0 - float(i % 2) * 8.0, 20.0 + float(i % 3) * 7.0, reed.darkened(0.08))
+	if id == "cove" or id == "river":
+		for spot in [Vector2(112, 548), Vector2(246, 562), Vector2(188, 536)]:
+			var bob := sin(n.t * 1.1 + spot.x) * 1.2
+			_ellipse(n, spot + Vector2(0, bob), 14, 6, Color("1f6a48"))
+			_ellipse(n, spot + Vector2(-3, bob - 1), 6, 3, Color("3d9a62"))
+	if id == "sea":
+		_ellipse(n, Vector2(118, 230), 22, 10, Color("cbbba4"))
+		_ellipse(n, Vector2(126, 226), 8, 5, Color("e7dcc8"))
+		_palm(n, Vector2(120, 226), 36, Color(pal["hill"]).lightened(0.2))
+	else:
+		_ellipse(n, Vector2(108, 236), 16, 8, Color(0.05, 0.08, 0.1, 0.45))
+		_ellipse(n, Vector2(262, 214), 12, 6, Color(0.05, 0.08, 0.1, 0.35))
+	if id == "pier":
+		for i in 5:
+			var x := 96.0 + float(i) * 42.0
+			var gy := 168.0
+			n.draw_rect(Rect2(x, gy, 4, 18), Color("1a1814"), true)
+			n.draw_rect(Rect2(x - 10, gy, 24, 3), Color("2a241c"), true)
+
+
+func _lake_marks(n: Node2D, _id: String) -> void:
+	for k in 2:
+		var edge_y := 310.0 if k == 0 else 500.0
+		for i in 11:
+			var x := 84.0 + float(i) * 20.0
+			var y := edge_y + sin(n.t * 1.3 + float(i) + edge_y) * 1.6
+			var a := 0.1 if edge_y > 400.0 else 0.07
+			n.draw_line(Vector2(x, y), Vector2(x + 9.0, y), Color(1, 1, 1, a), 1.2, true)
+	_text(n, "глубина", Vector2(92, 236), 12, Color(CREAM, 0.45), HORIZONTAL_ALIGNMENT_LEFT, 120)
+	_text(n, "плёс", Vector2(92, 404), 12, Color(CREAM, 0.4), HORIZONTAL_ALIGNMENT_LEFT, 120)
+	_text(n, "берег", Vector2(92, 528), 12, Color(CREAM, 0.5), HORIZONTAL_ALIGNMENT_LEFT, 120)
+
+
+func _lake_life(n: Node2D, id: String) -> void:
+	var pool: Array = Catalog.fish_in(id)
+	if pool.is_empty():
+		return
+	for i in 7:
+		var spec: Dictionary = pool[i % pool.size()]
+		var rarity := int(spec["rarity"])
+		var deep_bias := clampf((float(rarity) - 1.0) / 3.0, 0.0, 1.0)
+		var lane := 548.0 - deep_bias * 330.0
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		var speed := 18.0 + (1.0 - deep_bias) * 26.0
+		var span := 200.0
+		var along := fposmod(_hash(i * 19 + 3) * span + n.t * speed, span)
+		var x := (82.0 + along) if dir > 0.0 else (292.0 - along)
+		var y := lane + sin(n.t * (0.7 + deep_bias) + float(i) * 1.3) * (8.0 + deep_bias * 6.0)
+		y = clampf(y, 178.0, 586.0)
+		var col := Color.html(str(spec["color"]))
+		_fish(n, Vector2(x, y), 13.0 + float(rarity) * 5.5, dir, str(spec["id"]), col, n.t + float(i), 0.88)
+
+
+func _lake_hotspot(n: Node2D) -> void:
+	var hs: Vector2 = n.hotspot
+	var pulse := 0.5 + 0.5 * sin(n.t * 2.4)
+	_ellipse(n, hs, 58, 30, Color(1, 0.84, 0.45, 0.07 + 0.05 * pulse))
+	_ellipse(n, hs, 28, 14, Color(0.75, 0.95, 1.0, 0.1))
+	for i in 9:
+		var phase := fposmod(n.t * 0.65 + float(i) * 0.33, 1.0)
+		var ang := float(i) * 1.9 + float(n.t) * 0.35
+		var rad := 6.0 + phase * 34.0
+		var p := hs + Vector2(cos(ang) * rad, sin(ang) * rad * 0.55)
+		var a := (1.0 - phase) * 0.75
+		n.draw_circle(p, 1.4 + phase * 2.4, Color(1, 1, 1, a))
+	var school := ["perch", "roach", "crucian", "bream"]
+	for i in 4:
+		var a := float(n.t) * 0.7 + float(i) * TAU / 4.0
+		var p := hs + Vector2(cos(a) * 24.0, sin(a) * 12.0)
+		var dir := -1.0 if sin(a) > 0.0 else 1.0
+		var spec: Dictionary = Catalog.fish_by_id(school[i])
+		var col := Color.html(str(spec.get("color", "e4a04a")))
+		_fish(n, p, 18.0, dir, school[i], col, n.t, 1.0)
+	if bool(n.spooked):
+		var anchor: Vector2 = n.linger_anchor
+		var a2 := 0.25 + 0.2 * sin(n.t * 4.0)
+		n.draw_arc(anchor, 18.0, 0.0, TAU, 20, Color(RUST, a2), 1.6, true)
+		n.draw_arc(anchor, 28.0, 0.4, TAU - 0.2, 18, Color(RUST, a2 * 0.6), 1.2, true)
+
+
+func _lake_boat(n: Node2D) -> void:
+	var pos: Vector2 = n.boat
+	var heading: Vector2 = n.boat_heading
+	if heading.length() < 0.05:
+		heading = Vector2(0, -1)
+	else:
+		heading = heading.normalized()
+	var spd := clampf(float(n.boat_speed) / 150.0, 0.0, 1.0)
+	if spd > 0.04:
+		for i in 3:
+			var back := _boat_pt(pos, heading, Vector2(sin(n.t * 3.0 + float(i)) * 2.0, 20.0 + float(i) * 11.0))
+			_ellipse(n, back, 7.0 + float(i) * 5.0, 3.2, Color(1, 1, 1, (0.22 - float(i) * 0.06) * spd))
+	_ellipse(n, pos + Vector2(3, 7), 16, 7, Color(0, 0, 0, 0.28))
+	var hull := PackedVector2Array([
+		_boat_pt(pos, heading, Vector2(0, -24)),
+		_boat_pt(pos, heading, Vector2(12, -2)),
+		_boat_pt(pos, heading, Vector2(10, 16)),
+		_boat_pt(pos, heading, Vector2(-10, 16)),
+		_boat_pt(pos, heading, Vector2(-12, -2)),
+	])
+	n.draw_colored_polygon(hull, Color("6a442c"))
+	var inner := PackedVector2Array([
+		_boat_pt(pos, heading, Vector2(0, -16)),
+		_boat_pt(pos, heading, Vector2(7, 0)),
+		_boat_pt(pos, heading, Vector2(6, 11)),
+		_boat_pt(pos, heading, Vector2(-6, 11)),
+		_boat_pt(pos, heading, Vector2(-7, 0)),
+	])
+	n.draw_colored_polygon(inner, Color("8d5c38"))
+	n.draw_colored_polygon(PackedVector2Array([
+		_boat_pt(pos, heading, Vector2(-7, 2)),
+		_boat_pt(pos, heading, Vector2(7, 2)),
+		_boat_pt(pos, heading, Vector2(6, 7)),
+		_boat_pt(pos, heading, Vector2(-6, 7)),
+	]), Color("5c3a24"))
+	n.draw_circle(_boat_pt(pos, heading, Vector2(0, -18)), 2.4, GOLD)
+	var sway := sin(n.t * 6.5) * spd * 7.0
+	n.draw_line(_boat_pt(pos, heading, Vector2(-7, 3)), _boat_pt(pos, heading, Vector2(-22, 8 + sway)), Color("c4a074"), 2.2, true)
+	n.draw_line(_boat_pt(pos, heading, Vector2(7, 3)), _boat_pt(pos, heading, Vector2(22, 8 - sway)), Color("c4a074"), 2.2, true)
+	var body := _boat_pt(pos, heading, Vector2(0, 6))
+	n.draw_circle(body, 5.2, Color("1d4e52"))
+	n.draw_circle(_boat_pt(pos, heading, Vector2(0, 0)), 3.6, Color("f0d2b4"))
+	n.draw_circle(_boat_pt(pos, heading, Vector2(0, -3)), 4.2, Color("142026"))
+	var phase := int(n.phase)
+	if phase == P_SAIL or phase == P_FLYING:
+		var hand := _boat_pt(pos, heading, Vector2(1, 2))
+		var tip := _boat_pt(pos, heading, Vector2(0, -34))
+		n.draw_line(hand, tip, Color("4a3424"), 2.6, true)
+		n.draw_line(hand, tip, Color("c4a074"), 1.2, true)
+
+
+func _lake_cast(n: Node2D) -> void:
+	var phase := int(n.phase)
+	if phase != P_FLYING and phase != P_WAITING and phase != P_BITE and phase != P_FIGHT:
+		return
+	var heading: Vector2 = n.boat_heading
+	if heading.length() < 0.05:
+		heading = Vector2(0, -1)
+	else:
+		heading = heading.normalized()
+	var pos: Vector2 = n.boat
+	var tip := _boat_pt(pos, heading, Vector2(0, -30))
+	var bp: Vector2 = n.bobber
+	bp.y += float(n.bobber_dip) * 0.35
+	var mid := tip.lerp(bp, 0.5) + Vector2(-heading.y, heading.x) * sin(n.t * 2.4) * 5.0
+	var line := PackedVector2Array()
+	for i in 12:
+		line.append(_quad(tip, mid, bp, float(i) / 11.0))
+	n.draw_polyline(line, Color(0.04, 0.06, 0.08, 0.45), 2.2, true)
+	n.draw_polyline(line, Color(0.95, 0.96, 0.9, 0.9), 1.1, true)
+	_bobber(n, bp)
+	_hooked(n, bp, phase)
+	for rip in n.ripples:
+		var alpha := clampf(float(rip["life"]), 0.0, 1.0)
+		var rad := float(rip["r"])
+		var at: Vector2 = rip["p"]
+		n.draw_arc(at, rad, 0.2, TAU - 0.2, 24, Color(1, 1, 1, alpha * 0.55), 1.4, true)
+		n.draw_arc(at, rad * 0.62, 0.4, TAU - 0.4, 16, Color(1, 1, 1, alpha * 0.25), 1.0, true)
+
+
+func _boat_pt(pos: Vector2, heading: Vector2, local: Vector2) -> Vector2:
+	return pos + local.rotated(heading.angle() + PI * 0.5)
+
+
 func _ui(n: Node2D, pal: Dictionary, id: String) -> void:
 	var phase := int(n.phase)
 	if phase == P_HOME:
@@ -685,7 +971,7 @@ func _ui(n: Node2D, pal: Dictionary, id: String) -> void:
 	elif phase == P_FIGHT:
 		_fight(n)
 		_chrome(n, id)
-	elif phase == P_READY or phase == P_CHARGING or phase == P_WAITING or phase == P_BITE or phase == P_FLYING:
+	elif phase == P_SAIL or phase == P_READY or phase == P_CHARGING or phase == P_WAITING or phase == P_BITE or phase == P_FLYING:
 		_chrome(n, id)
 	_dock(n, phase)
 	for b in n.buttons:
@@ -707,6 +993,8 @@ func _sheet(n: Node2D) -> void:
 func _dock(n: Node2D, phase: int) -> void:
 	if phase == P_HOME:
 		_rrect(n, Rect2(16, 672, 358, 156), Color(0.03, 0.07, 0.09, 0.48), 22)
+	elif phase == P_SAIL:
+		_rrect(n, Rect2(8, 624, 374, 208), Color(0.03, 0.07, 0.09, 0.46), 22)
 	elif phase == P_READY or phase == P_CHARGING or phase == P_WAITING or phase == P_BITE or phase == P_FIGHT or phase == P_FLYING:
 		_rrect(n, Rect2(16, 720, 358, 108), Color(0.03, 0.07, 0.09, 0.5), 22)
 	elif phase == P_RESULT:
@@ -732,11 +1020,18 @@ func _chrome(n: Node2D, _id: String) -> void:
 	var phase := int(n.phase)
 	var loc := Catalog.by_id(str(n.save["location"]))
 	_text(n, str(loc["name"]), Vector2(W * 0.5, 78), 16, CREAM, HORIZONTAL_ALIGNMENT_CENTER, 220)
+	if phase == P_SAIL or phase == P_WAITING or phase == P_BITE or phase == P_FLYING or phase == P_FIGHT:
+		var spot: Vector2 = n.bobber if phase != P_SAIL else n.boat
+		_text(n, n.zone_label(spot), Vector2(W * 0.5, 102), 15, GOLD if not bool(n.spooked) else RUST, HORIZONTAL_ALIGNMENT_CENTER, 220)
 	n.draw_circle(Vector2(W - 40, 38), 9, GOLD)
 	n.draw_circle(Vector2(W - 40, 38), 5.5, Color("a86b22"))
 	_text(n, "%d" % int(n.save["coins"]), Vector2(W - 56, 44), 16, GOLD, HORIZONTAL_ALIGNMENT_RIGHT, 110)
 	var hint := ""
-	if phase == P_READY:
+	if phase == P_SAIL:
+		hint = "Дальше — крупнее и реже. Ближе — чаще мелочь."
+		if bool(n.spooked):
+			hint = "Здесь пусто. Сдвинь лодку."
+	elif phase == P_READY:
 		hint = "Зажми и отпусти на вершине"
 	elif phase == P_CHARGING:
 		hint = "Отпусти в золотой зоне"
@@ -749,7 +1044,14 @@ func _chrome(n: Node2D, _id: String) -> void:
 	elif phase == P_FIGHT:
 		hint = str(n.fish.get("name", "Рыба"))
 	if hint != "":
-		_text(n, hint, Vector2(W * 0.5, 708), 14, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 36)
+		_text(n, hint, Vector2(W * 0.5, 618 if phase == P_SAIL else 708), 14, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 36)
+	if phase == P_SAIL or phase == P_WAITING:
+		var left := 1.0 - clampf(float(n.linger) / 16.0, 0.0, 1.0)
+		var meter := Rect2(48, 128, 200, 10)
+		_rrect(n, meter, Color(0, 0, 0, 0.4), 5)
+		var fill := GREEN.lerp(RUST, 1.0 - left)
+		_rrect(n, Rect2(meter.position.x + 1, meter.position.y + 1, (meter.size.x - 2.0) * left, meter.size.y - 2.0), fill, 4)
+		_text(n, "рыба на точке", Vector2(meter.position.x, meter.position.y - 4), 11, MUTED, HORIZONTAL_ALIGNMENT_LEFT, 160)
 	if phase == P_CHARGING or phase == P_READY:
 		var meter := Rect2(40, 652, 310, 16)
 		_rrect(n, meter, Color(0, 0, 0, 0.4), 8)
