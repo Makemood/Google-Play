@@ -92,7 +92,7 @@ static func fish_in(loc_id: String) -> Array:
 	return out
 
 
-static func roll_fish(loc_id: String, bait: int, distance: float) -> Dictionary:
+static func roll_fish(loc_id: String, bait: int, distance: float, zone: String = "open", spooked: bool = false) -> Dictionary:
 	var pool: Array = []
 	var weights: Array = []
 	var sum := 0.0
@@ -105,6 +105,20 @@ static func roll_fish(loc_id: String, bait: int, distance: float) -> Dictionary:
 			w *= 1.0 + float(bait) * 0.18 + distance * 0.35
 		if rarity >= 5:
 			w *= 0.4
+		if zone == "shallow":
+			w *= 1.8 if rarity <= 2 else 0.35
+		elif zone == "deep":
+			if rarity == 1:
+				w *= 0.4
+			elif rarity >= 3:
+				w *= 1.7
+		elif zone == "school":
+			if rarity >= 3:
+				w *= 2.3
+			if rarity >= 4:
+				w *= 1.35
+		if spooked and rarity >= 2:
+			w *= 0.4
 		pool.append(fish)
 		weights.append(w)
 		sum += w
@@ -116,10 +130,20 @@ static func roll_fish(loc_id: String, bait: int, distance: float) -> Dictionary:
 		if r <= acc:
 			chosen = pool[i]
 			break
-	var t := pow(randf(), 1.55)
+	var bias := 1.55
+	if zone == "shallow":
+		bias = 2.35
+	elif zone == "deep":
+		bias = 0.8
+	elif zone == "school":
+		bias = 1.05
+	if spooked:
+		bias += 0.65
+	var t := pow(randf(), bias)
 	var kg := lerpf(float(chosen["min_kg"]), float(chosen["max_kg"]), t)
 	var out := chosen.duplicate()
 	out["weight"] = snapped(kg, 0.01)
+	out["zone"] = zone
 	return out
 
 
