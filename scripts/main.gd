@@ -1,6 +1,7 @@
 extends Node2D
 
 const Catalog = preload("res://scripts/catalog.gd")
+const Art = preload("res://scripts/art.gd")
 
 const W := 390.0
 const H := 844.0
@@ -46,10 +47,12 @@ var toast_text := ""
 var toast_t := 0.0
 var result: Dictionary = {}
 var font: Font
+var painter
 
 
 func _ready() -> void:
 	font = ThemeDB.fallback_font
+	painter = Art.new()
 	seed(int(Time.get_unix_time_from_system()))
 	_load()
 	for i in 6:
@@ -448,307 +451,21 @@ func _hit(p: Vector2) -> String:
 	return ""
 
 
-func _draw() -> void:
-	var ox := randf_range(-shake, shake)
-	draw_set_transform(Vector2(ox, 0), 0.0, Vector2.ONE)
-	_draw_world()
-	_draw_overlay()
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-func _draw_world() -> void:
-	var loc := Catalog.by_id(str(save["location"]))
-	if loc.is_empty():
-		loc = Catalog.LOCATIONS[0]
-	var sky0 := Color.html(str(loc["sky0"]))
-	var sky1 := Color.html(str(loc["sky1"]))
-	var water := Color.html(str(loc["water"]))
-	var hill := Color.html(str(loc["hill"]))
-	for i in 16:
-		var u := float(i) / 15.0
-		draw_rect(Rect2(0, u * 400.0, W, 30), sky0.lerp(sky1, u), true)
-	if str(loc["id"]) == "pier":
-		draw_circle(Vector2(292, 108), 16, Color(0.93, 0.94, 0.88))
-		draw_circle(Vector2(292, 108), 34, Color(0.75, 0.8, 0.9, 0.12))
-	else:
-		draw_circle(Vector2(300, 148), 46, Color(1, 0.78, 0.42, 0.16))
-		draw_circle(Vector2(300, 148), 26, Color(1, 0.88, 0.62))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, 408), Vector2(0, 312), Vector2(70, 338), Vector2(150, 286),
-		Vector2(240, 346), Vector2(320, 300), Vector2(W, 334), Vector2(W, 408),
-	]), hill)
-	for i in 8:
-		var x := 168.0 + float(i) * 24.0
-		var h := 22.0 + sin(float(i) * 1.7) * 10.0
-		draw_line(Vector2(x, 400), Vector2(x + 6.0, 400.0 - h), Color(0.1, 0.28, 0.18), 3.0)
-	for i in 24:
-		var y := 398.0 + float(i) * 20.0
-		var wave := sin(t * 1.25 + float(i) * 0.62) * 4.0
-		var c := water.lerp(Color(0.62, 0.84, 0.78), 0.05 + 0.04 * sin(t * 0.7 + float(i)))
-		c = c.lerp(Color("041016"), float(i) / 32.0)
-		draw_rect(Rect2(0, y + wave, W, 26), c, true)
-	for spec in ambient:
-		var dir := 1.0 if float(spec["v"]) > 0.0 else -1.0
-		var wobble := sin(t * 3.0 + float(spec["x"]) * 0.02) * 3.0
-		_draw_fish(Vector2(float(spec["x"]), float(spec["y"]) + wobble), float(spec["len"]), spec["color"], dir)
-	_draw_pier()
-	_draw_angler()
-	if phase == Phase.FLYING or phase == Phase.WAITING or phase == Phase.BITE or phase == Phase.FIGHT:
-		var tip := _rod_tip()
-		var bp := bobber + Vector2(0, bobber_dip)
-		var sag := tip.lerp(bp, 0.5) + Vector2(0, 26.0 + sin(t * 2.2) * 5.0)
-		var pts := PackedVector2Array()
-		for i in 14:
-			pts.append(_quad(tip, sag, bp, float(i) / 13.0))
-		draw_polyline(pts, Color(0.93, 0.94, 0.9, 0.9), 1.6, true)
-		_draw_bobber(bp)
-		if phase == Phase.FIGHT or phase == Phase.BITE or phase == Phase.WAITING:
-			var col := GOLD
-			var length := 28.0
-			if not fish.is_empty():
-				col = Color.html(str(fish["color"]))
-				length = 22.0 + float(fish["rarity"]) * 6.0
-			var fish_pos := bp + Vector2(sin(t * 2.0) * 10.0, 36.0 + sin(t * 1.4) * 8.0)
-			_draw_fish(fish_pos, length, col, -1.0)
-	for rip in ripples:
-		var alpha := clampf(float(rip["life"]), 0.0, 1.0)
-		draw_arc(rip["p"], float(rip["r"]), 0.0, TAU, 28, Color(1, 1, 1, alpha * 0.55), 1.5, true)
-
-
-func _draw_pier() -> void:
-	draw_rect(Rect2(0, 390, 168, 16), Color("6b4b32"), true)
-	draw_rect(Rect2(0, 390, 168, 3), Color("8a6244"), true)
-	for i in 6:
-		draw_rect(Rect2(10 + i * 26, 406, 14, 78), Color("4e3424"), true)
-
-
-func _draw_angler() -> void:
-	draw_rect(Rect2(58, 374, 14, 18), Color("241910"), true)
-	draw_rect(Rect2(78, 374, 14, 18), Color("241910"), true)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(52, 376), Vector2(98, 376), Vector2(104, 328), Vector2(46, 328),
-	]), Color("1d4a4e"))
-	draw_circle(Vector2(74, 316), 11, Color("f0d2b4"))
-	draw_rect(Rect2(60, 300, 30, 8), Color("142026"), true)
-	draw_rect(Rect2(66, 286, 16, 16), Color("142026"), true)
-	var tip := _rod_tip()
-	draw_line(Vector2(98, 342), tip, Color("5a3a24"), 3.2, true)
-
-
 func _rod_tip() -> Vector2:
 	if phase == Phase.CHARGING:
 		return Vector2(168, 318 - power * 46.0)
+	if phase == Phase.FIGHT:
+		return Vector2(188, 250)
+	if phase == Phase.BITE:
+		return Vector2(184, 268)
 	return Vector2(176, 292)
 
 
-func _draw_bobber(bp: Vector2) -> void:
-	draw_circle(bp, 7.5, GOLD)
-	draw_rect(Rect2(bp.x - 1.5, bp.y + 2.0, 3, 11), CREAM, true)
-	draw_circle(bp + Vector2(0, 14), 3.2, RUST)
-
-
-func _draw_fish(center: Vector2, length: float, col: Color, dir: float) -> void:
-	var nose := center + Vector2(dir * length * 0.55, 0)
-	var tail := center + Vector2(-dir * length * 0.35, 0)
-	draw_colored_polygon(PackedVector2Array([
-		nose,
-		center + Vector2(-dir * length * 0.05, -length * 0.24),
-		tail,
-		center + Vector2(-dir * length * 0.05, length * 0.24),
-	]), col)
-	draw_colored_polygon(PackedVector2Array([
-		tail,
-		tail + Vector2(-dir * length * 0.32, -length * 0.2),
-		tail + Vector2(-dir * length * 0.32, length * 0.2),
-	]), col.darkened(0.12))
-	draw_circle(center + Vector2(dir * length * 0.28, -length * 0.05), maxf(1.6, length * 0.06), INK)
-
-
-func _draw_overlay() -> void:
-	if phase == Phase.HOME:
-		_draw_home()
-	elif phase == Phase.SHOP:
-		_draw_shop()
-	elif phase == Phase.DEX:
-		_draw_dex()
-	elif phase == Phase.MAP:
-		_draw_map()
-	elif phase == Phase.RESULT:
-		_draw_result()
-	elif phase == Phase.FIGHT:
-		_draw_fight()
-		_draw_fishing_chrome()
-	elif phase == Phase.READY or phase == Phase.CHARGING or phase == Phase.WAITING or phase == Phase.BITE or phase == Phase.FLYING:
-		_draw_fishing_chrome()
-	for b in buttons:
-		_draw_button(b)
-	if toast_t > 0.0:
-		_chip(toast_text, Vector2(W * 0.5, 92))
-
-
-func _draw_home() -> void:
-	draw_rect(Rect2(24, 88, 342, 250), Color(0.03, 0.07, 0.09, 0.62), true)
-	_text("ЗОЛОТОЙ КЛЁВ", Vector2(W * 0.5, 148), 32, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 40)
-	_text("Рыбалка", Vector2(W * 0.5, 184), 18, GOLD, HORIZONTAL_ALIGNMENT_CENTER, W - 40)
-	var loc := Catalog.by_id(str(save["location"]))
-	_text(str(loc["name"]), Vector2(W * 0.5, 230), 20, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 48)
-	_text("%d монет" % int(save["coins"]), Vector2(W * 0.5, 262), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER, W - 48)
-	_text("Атлас %d/16   ·   рекорд %.2f кг" % [_dex_count(), float(save["stats"]["best"])], Vector2(W * 0.5, 292), 14, MUTED, HORIZONTAL_ALIGNMENT_CENTER, W - 48)
-	_text(_daily_line(), Vector2(W * 0.5, 316), 14, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 48)
-
-
-func _draw_fishing_chrome() -> void:
-	var loc := Catalog.by_id(str(save["location"]))
-	_text(str(loc["name"]), Vector2(124, 46), 18, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 160)
-	_text("%d" % int(save["coins"]), Vector2(W - 24, 46), 18, GOLD, HORIZONTAL_ALIGNMENT_RIGHT, 120)
-	var hint := ""
-	if phase == Phase.READY:
-		hint = "Зажми и отпусти — сила заброса"
-	elif phase == Phase.CHARGING:
-		hint = "Отпусти в верхней точке"
-	elif phase == Phase.FLYING:
-		hint = "Леска в полёте"
-	elif phase == Phase.WAITING:
-		hint = "Мелкая дрожь — ещё не клёв"
-	elif phase == Phase.BITE:
-		hint = "Клюёт! Жми сразу"
-	elif phase == Phase.FIGHT:
-		hint = str(fish.get("name", "Рыба"))
-	if hint != "":
-		_text(hint, Vector2(W * 0.5, 700), 15, CREAM, HORIZONTAL_ALIGNMENT_CENTER, W - 32)
-	if phase == Phase.CHARGING or phase == Phase.READY:
-		var meter := Rect2(48, 656, 294, 14)
-		draw_rect(meter, Color(0, 0, 0, 0.35), true)
-		var shown := power if phase == Phase.CHARGING else 0.0
-		draw_rect(Rect2(meter.position, Vector2(meter.size.x * shown, meter.size.y)), GOLD, true)
-	if phase == Phase.BITE:
-		var left_ratio := clampf(bite_left / 1.15, 0.0, 1.0)
-		draw_rect(Rect2(48, 656, 294, 14), Color(0, 0, 0, 0.35), true)
-		draw_rect(Rect2(48, 656, 294.0 * left_ratio, 14), RUST, true)
-
-
-func _draw_fight() -> void:
-	var bar := Rect2(334, 150, 28, 470)
-	draw_rect(bar, Color(0, 0, 0, 0.4), true)
-	var zh := _zone_h()
-	var zone_top := bar.position.y + (1.0 - (fight_zone_y + zh * 0.5)) * bar.size.y
-	var zone_h_px := zh * bar.size.y
-	draw_rect(Rect2(bar.position.x + 3.0, zone_top, bar.size.x - 6.0, zone_h_px), GREEN, true)
-	var fish_y := bar.position.y + (1.0 - fight_fish_y) * bar.size.y
-	draw_circle(Vector2(bar.position.x + bar.size.x * 0.5, fish_y), 7, GOLD)
-	var prog := Rect2(32, 118, 280, 12)
-	draw_rect(prog, Color(0, 0, 0, 0.35), true)
-	draw_rect(Rect2(prog.position, Vector2(prog.size.x * fight_progress, prog.size.y)), GOLD, true)
-	_text("Держи, чтобы рамка поднималась", Vector2(32, 148), 13, MUTED, HORIZONTAL_ALIGNMENT_LEFT, 280)
-
-
-func _draw_result() -> void:
-	draw_rect(Rect2(0, 0, W, H), Color(0.02, 0.05, 0.06, 0.45), true)
-	var card := Rect2(28, 180, 334, 480)
-	draw_rect(card, Color("102228"), true)
-	draw_rect(card, GOLD, false, 2.0)
-	var title := str(result.get("title", ""))
-	_text(title, Vector2(W * 0.5, 240), 28, CREAM, HORIZONTAL_ALIGNMENT_CENTER, 300)
-	if bool(result.get("ok", false)) and not fish.is_empty():
-		_draw_fish(Vector2(W * 0.5, 340), 54, Color.html(str(fish["color"])), 1.0)
-		_text("+%d монет" % int(result.get("coins", 0)), Vector2(W * 0.5, 430), 22, GOLD, HORIZONTAL_ALIGNMENT_CENTER, 300)
-	_text(str(result.get("line", "")), Vector2(W * 0.5, 480), 15, MUTED, HORIZONTAL_ALIGNMENT_CENTER, 300)
-
-
-func _draw_shop() -> void:
-	_dim_panel()
-	_text("Снасти", Vector2(130, 48), 22, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 200)
-	_text("%d монет" % int(save["coins"]), Vector2(W - 20, 48), 16, GOLD, HORIZONTAL_ALIGNMENT_RIGHT, 140)
-	var order: Array = Catalog.GEAR_ORDER
-	for i in order.size():
-		var gid := str(order[i])
-		var spec: Dictionary = Catalog.GEAR[gid]
-		var card := _gear_card_rect(i)
-		draw_rect(card, Color("102228"), true)
-		_text(str(spec["name"]), Vector2(card.position.x + 16, card.position.y + 36), 20, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 200)
-		_text(str(spec["blurb"]), Vector2(card.position.x + 16, card.position.y + 64), 14, MUTED, HORIZONTAL_ALIGNMENT_LEFT, 210)
-		var level := int(save["gear"][gid])
-		var pips := ""
-		for n in 4:
-			pips += "● " if n < level else "○ "
-		_text(pips, Vector2(card.position.x + 16, card.position.y + 112), 16, GOLD, HORIZONTAL_ALIGNMENT_LEFT, 180)
-
-
-func _draw_map() -> void:
-	_dim_panel()
-	_text("Водоёмы", Vector2(130, 48), 22, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 220)
-	for i in Catalog.LOCATIONS.size():
-		var loc: Dictionary = Catalog.LOCATIONS[i]
-		var card := _loc_card_rect(i)
-		draw_rect(card, Color("102228"), true)
-		var owned: bool = str(loc["id"]) in save["unlocked"]
-		_text(str(loc["name"]), Vector2(card.position.x + 16, card.position.y + 40), 20, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 200)
-		var detail := "Открыто" if owned else "Открытие %d" % int(loc["cost"])
-		if str(save["location"]) == str(loc["id"]):
-			detail = "Сейчас ты здесь"
-		_text(detail, Vector2(card.position.x + 16, card.position.y + 72), 14, MUTED, HORIZONTAL_ALIGNMENT_LEFT, 200)
-		var names := ""
-		for fish in Catalog.fish_in(str(loc["id"])):
-			names += str(fish["name"]) + "  "
-		_text(names, Vector2(card.position.x + 16, card.position.y + 104), 13, GOLD, HORIZONTAL_ALIGNMENT_LEFT, 200)
-
-
-func _draw_dex() -> void:
-	_dim_panel()
-	_text("Атлас %d/16" % _dex_count(), Vector2(130, 48), 22, CREAM, HORIZONTAL_ALIGNMENT_LEFT, 220)
-	for i in Catalog.FISH.size():
-		var spec: Dictionary = Catalog.FISH[i]
-		var col := i % 2
-		var row := int(i / 2)
-		var cell := Rect2(20 + col * 178, 88 + row * 88, 168, 80)
-		var known: bool = save["dex"].has(str(spec["id"]))
-		draw_rect(cell, Color("102228"), true)
-		var tint := Color.html(str(spec["color"])) if known else Color(0.25, 0.3, 0.32)
-		_draw_fish(cell.position + Vector2(36, 40), 22, tint, 1.0)
-		var label := str(spec["name"]) if known else "???"
-		_text(label, Vector2(cell.position.x + 68, cell.position.y + 32), 14, CREAM if known else MUTED, HORIZONTAL_ALIGNMENT_LEFT, 92)
-		if known:
-			var entry: Dictionary = save["dex"][str(spec["id"])]
-			_text("%.2f кг" % float(entry.get("best", 0.0)), Vector2(cell.position.x + 68, cell.position.y + 54), 13, GOLD, HORIZONTAL_ALIGNMENT_LEFT, 92)
-		else:
-			_text(Catalog.rarity_name(int(spec["rarity"])), Vector2(cell.position.x + 68, cell.position.y + 54), 12, MUTED, HORIZONTAL_ALIGNMENT_LEFT, 92)
-
-
-func _dim_panel() -> void:
-	draw_rect(Rect2(0, 0, W, H), Color(0.03, 0.06, 0.07, 0.78), true)
-
-
-func _draw_button(b: Dictionary) -> void:
-	var r: Rect2 = b["rect"]
-	var primary := bool(b.get("primary", false))
-	var hot := pointer_down and r.has_point(pointer_pos)
-	var fill := GOLD if primary else Color("14343c")
-	if hot:
-		fill = fill.lightened(0.12)
-	draw_rect(r, fill, true)
-	draw_rect(r, Color("f4ebda").lerp(GOLD, 0.35), false, 1.5)
-	var ink := INK if primary else CREAM
-	_text(str(b["label"]), Vector2(r.position.x + r.size.x * 0.5, r.position.y + r.size.y * 0.66), 18, ink, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-
-
-func _text(s: String, pos: Vector2, size: int, color: Color, align: HorizontalAlignment, width: float) -> void:
-	var origin := pos
-	if align == HORIZONTAL_ALIGNMENT_CENTER:
-		origin.x -= width * 0.5
-	elif align == HORIZONTAL_ALIGNMENT_RIGHT:
-		origin.x -= width
-	draw_string(font, origin, s, align, width, size, color)
-
-
-func _chip(s: String, center: Vector2) -> void:
-	var width := 220.0
-	var r := Rect2(center.x - width * 0.5, center.y - 18.0, width, 36.0)
-	draw_rect(r, Color("102228"), true)
-	_text(s, Vector2(center.x, r.position.y + 24), 14, CREAM, HORIZONTAL_ALIGNMENT_CENTER, width)
-
-
-func _quad(a: Vector2, c: Vector2, b: Vector2, u: float) -> Vector2:
-	return a.lerp(c, u).lerp(c.lerp(b, u), u)
+func _draw() -> void:
+	var ox := randf_range(-shake, shake)
+	draw_set_transform(Vector2(ox, 0.0), 0.0, Vector2.ONE)
+	painter.paint(self)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _daily_line() -> String:
